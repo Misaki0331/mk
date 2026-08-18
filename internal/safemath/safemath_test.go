@@ -24,6 +24,7 @@ func TestMulInt64SaturatesAtRepresentationBounds(t *testing.T) {
 
 func TestMulFloat64SaturatesAndPreservesNormalFractions(t *testing.T) {
 	assert.Equal(t, int64(10), MulFloat64(10.5, 1))
+	assert.Equal(t, int64(0), MulFloat64(math.NaN(), 1024))
 	assert.Equal(t, int64(math.MaxInt64), MulFloat64(float64(math.MaxInt64), 2))
 	assert.Equal(t, int64(math.MinInt64), MulFloat64(float64(math.MinInt64), 2))
 }

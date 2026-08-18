@@ -25,6 +25,9 @@ func MulInt64(value, unit int64) int64 {
 // MulFloat64 multiplies a float64 by a non-negative int64 unit, truncates the
 // result like an ordinary integer conversion, and saturates on overflow.
 func MulFloat64(value float64, unit int64) int64 {
+	if math.IsNaN(value) {
+		return 0
+	}
 	product := value * float64(unit)
 	if product >= float64(math.MaxInt64) {
 		return math.MaxInt64
