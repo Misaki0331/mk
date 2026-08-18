@@ -242,3 +242,77 @@ func TestObjectID_Ordering(t *testing.T) {
 
 	assert.True(t, id2 > id1, "later ObjectID should be lexicographically greater")
 }
+
+var testAIDEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+const testAIDMaxOffsetMillis = 36*36*36*36*36*36*36*36 - 1
+
+func TestGenerators_ClampUpperTimestampWithoutChangingFormat(t *testing.T) {
+	tests := []struct {
+		method    string
+		max       time.Time
+		step      time.Duration
+		length    int
+		prefixLen int
+		prefix    string
+	}{
+		{method: "aid", max: testAIDEpoch.Add(testAIDMaxOffsetMillis * time.Millisecond), step: time.Millisecond, length: 10, prefixLen: 8, prefix: "zzzzzzzz"},
+		{method: "aidx", max: testAIDEpoch.Add(testAIDMaxOffsetMillis * time.Millisecond), step: time.Millisecond, length: 16, prefixLen: 8, prefix: "zzzzzzzz"},
+		{method: "meid", max: time.UnixMilli(1<<47 - 1), step: time.Millisecond, length: 24, prefixLen: 12, prefix: "ffffffffffff"},
+		{method: "objectid", max: time.Unix(1<<32-1, 0), step: time.Second, length: 24, prefixLen: 8, prefix: "ffffffff"},
+		{method: "ulid", max: time.UnixMilli(1<<48 - 1), step: time.Millisecond, length: 26, prefixLen: 10, prefix: "7ZZZZZZZZZ"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.method, func(t *testing.T) {
+			g, err := NewGenerator(tc.method)
+			require.NoError(t, err)
+			inside := g.Generate(tc.max.Add(-tc.step))
+			atMax := g.Generate(tc.max)
+			var beyond string
+			require.NotPanics(t, func() { beyond = g.Generate(tc.max.Add(tc.step)) })
+
+			assert.Len(t, beyond, tc.length)
+			assert.Equal(t, tc.prefix, atMax[:tc.prefixLen])
+			assert.Equal(t, tc.prefix, beyond[:tc.prefixLen])
+			assert.Less(t, inside[:tc.prefixLen], tc.prefix)
+			parsed, err := g.ParseTime(beyond)
+			require.NoError(t, err)
+			assert.Equal(t, tc.max.UTC(), parsed.UTC())
+		})
+	}
+}
+
+func TestGenerators_ClampLowerTimestampWithoutChangingFormat(t *testing.T) {
+	tests := []struct {
+		method    string
+		min       time.Time
+		step      time.Duration
+		length    int
+		prefixLen int
+		prefix    string
+	}{
+		{method: "aid", min: testAIDEpoch, step: time.Millisecond, length: 10, prefixLen: 8, prefix: "00000000"},
+		{method: "aidx", min: testAIDEpoch, step: time.Millisecond, length: 16, prefixLen: 8, prefix: "00000000"},
+		{method: "meid", min: time.UnixMilli(-1 << 47), step: time.Millisecond, length: 24, prefixLen: 12, prefix: "000000000000"},
+		{method: "objectid", min: time.Unix(0, 0), step: time.Second, length: 24, prefixLen: 8, prefix: "00000000"},
+		{method: "ulid", min: time.UnixMilli(0), step: time.Millisecond, length: 26, prefixLen: 10, prefix: "0000000000"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.method, func(t *testing.T) {
+			g, err := NewGenerator(tc.method)
+			require.NoError(t, err)
+			atMin := g.Generate(tc.min)
+			inside := g.Generate(tc.min.Add(tc.step))
+			var before string
+			require.NotPanics(t, func() { before = g.Generate(tc.min.Add(-tc.step)) })
+
+			assert.Len(t, before, tc.length)
+			assert.Equal(t, tc.prefix, atMin[:tc.prefixLen])
+			assert.Equal(t, tc.prefix, before[:tc.prefixLen])
+			assert.Greater(t, inside[:tc.prefixLen], tc.prefix)
+			parsed, err := g.ParseTime(before)
+			require.NoError(t, err)
+			assert.Equal(t, tc.min.UTC(), parsed.UTC())
+		})
+	}
+}

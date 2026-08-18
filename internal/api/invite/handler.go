@@ -17,6 +17,7 @@ import (
 	"github.com/shiroha-a/mk/internal/misc/id"
 	"github.com/shiroha-a/mk/internal/model"
 	"github.com/shiroha-a/mk/internal/repository"
+	"github.com/shiroha-a/mk/internal/safemath"
 	"github.com/shiroha-a/mk/internal/server/middleware"
 
 	"github.com/shiroha-a/mk/internal/core/role"
@@ -73,7 +74,7 @@ func (h *Handler) Create(c echo.Context) error {
 		if v, ok2 := role.PolicyMinutes(policies["inviteLimitCycle"]); ok2 {
 			cycle = v
 		}
-		sinceID := h.idGen.Generate(now.Add(-cycle))
+		sinceID := h.idGen.Generate(now.Add(time.Duration(safemath.NegateInt64(int64(cycle)))))
 		count, err := h.repo.CountByCreatorSince(user.ID, sinceID)
 		if err != nil {
 			return apierr.JSONInternalError(c)
@@ -238,12 +239,12 @@ func (h *Handler) Limit(c echo.Context) error {
 	if v, ok := role.PolicyMinutes(policies["inviteLimitCycle"]); ok {
 		cycle = v
 	}
-	sinceID := h.idGen.Generate(time.Now().Add(-cycle))
+	sinceID := h.idGen.Generate(time.Now().Add(time.Duration(safemath.NegateInt64(int64(cycle)))))
 	count, err := h.repo.CountByCreatorSince(user.ID, sinceID)
 	if err != nil {
 		return apierr.JSONInternalError(c)
 	}
-	remaining := int64(invLimit) - count
+	remaining := safemath.AddInt64(safemath.MulFloat64(invLimit, 1), -count)
 	if remaining < 0 {
 		remaining = 0
 	}

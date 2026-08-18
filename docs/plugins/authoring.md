@@ -275,6 +275,8 @@ contributionの`Priority`は`0..2`で、大きいpriorityのgroupだけをnative
 
 値はnative keyの型に一致させる。boolはOR、integerは最大値、`chatAvailability`は`available`、`readonly`、`unavailable`の順で寛容な値、`uploadableFileTypes`はtrim後のset unionを使う。integerは`int`、host `int`範囲内の`int64`、または有限、整数、小数部なし、host `int`範囲内の`float64`だけを受理する。typed integerは`2^53`を超えても`float64`へ変換せず比較する。
 
+受理されたhost integerはpolicy map内ではhost `int`の精度を維持する。consumerが分・MBなどを`time.Duration`やbyte数へ変換するときは、その下流表現の`MinInt64..MaxInt64`境界で飽和する。したがって大きな正数がwrapして負数・無制限扱いになることはなく、通常範囲の値・単位・instance/server capの優先順位は変わらない。
+
 未宣言key、unknown key、priority範囲外、order重複、型不一致、NaN、infinity、範囲外整数、enum外の値、空または非文字列の配列要素が1件でもあればprovider全体を失敗として扱う。resolverのerrorやpanicも同様。失敗providerが宣言したkeyはnative結果へ戻し、同じkeyに対する他providerの貢献も破棄する。宣言していないkeyには成功providerの貢献を適用し続ける。以前の成功値は再利用せず、診断errorはplugin名、user/role/policy ID、provider output、panic値を含まない。
 
 instance/server capはplugin集約の後に適用する。`maxFileSizeMb`、`chunkedUploadMaxConcurrentSessions`、`chunkedUploadMaxPendingMb`へ`0`以下の無制限値を返しても、positiveなcapが設定されていればcap値になる。capの取得に失敗した場合、分割uploadはfail-closedになる。

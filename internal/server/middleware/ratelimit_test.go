@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -308,6 +309,7 @@ func TestScaledMax(t *testing.T) {
 	assert.Equal(t, 1, scaledMax(10, 1000.0), "極大 factor でも 1 にクランプ")
 	assert.Equal(t, 300, scaledMax(300, 0), "factor=0 は 1.0 扱い (= base)")
 	assert.Equal(t, 300, scaledMax(300, -1), "負数も 1.0 扱い (防御)")
+	assert.Equal(t, math.MaxInt, scaledMax(300, math.SmallestNonzeroFloat64), "極小の正数は最大まで緩和")
 }
 
 // scaledMinInterval は upstream の minInterval*factor semantics (#2106 N28)。
@@ -317,6 +319,7 @@ func TestScaledMinInterval(t *testing.T) {
 	assert.Equal(t, 2000*time.Millisecond, scaledMinInterval(base, 2.0), "factor=2.0 で window 2x (厳格)")
 	assert.Equal(t, 500*time.Millisecond, scaledMinInterval(base, 0.5), "factor=0.5 で window 半分 (緩和)")
 	assert.Equal(t, base, scaledMinInterval(base, 0), "factor=0 は base")
+	assert.Equal(t, time.Duration(math.MaxInt64), scaledMinInterval(time.Second, math.MaxFloat64))
 }
 
 func TestMiddleware_UnauthenticatedIPActor(t *testing.T) {

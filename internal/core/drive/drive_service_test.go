@@ -10,8 +10,10 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/shiroha-a/mk/internal/core/drive"
@@ -245,6 +247,21 @@ func TestCapacity_FromPolicy(t *testing.T) {
 	assert.Equal(t, int64(1.5*1024*1024), svc.Capacity("u1"))
 }
 
+func TestCapacity_MaxPolicySaturatesPositive(t *testing.T) {
+	svc, _, _ := newSvc(t)
+	svc.SetRoleChecker(&fakeMod{policies: map[string]map[string]any{
+		"u1": {"driveCapacityMb": math.MaxInt},
+	}})
+
+	want := int64(math.MaxInt)
+	if strconv.IntSize == 64 {
+		want = math.MaxInt64
+	} else {
+		want *= 1024 * 1024
+	}
+	assert.Equal(t, want, svc.Capacity("u1"))
+}
+
 func TestShow_ModeratorBypass(t *testing.T) {
 	svc, fileRepo, _ := newSvc(t)
 	other := "other"
@@ -460,6 +477,24 @@ func TestUpload_NoFreeSpace(t *testing.T) {
 }
 
 // remote user は本 gate を skip する (= mk-go に expireOldFile が未実装な為)。
+func TestUpload_UsageAdditionCannotOverflowCapacityGate(t *testing.T) {
+	if strconv.IntSize != 64 {
+		t.Skip("host-int usage cannot reach int64 overflow on 32-bit")
+	}
+	svc, fileRepo, _ := newSvc(t)
+	owner := "u1"
+	fileRepo.Files["existing"] = &model.DriveFile{ID: "existing", UserID: &owner, Size: math.MaxInt}
+	svc.SetRoleChecker(&fakeMod{policies: map[string]map[string]any{
+		"u1": {"driveCapacityMb": math.MaxInt, "maxFileSizeMb": math.MaxInt},
+	}})
+
+	_, err := svc.Upload(context.Background(), drive.UploadInput{
+		User: &model.User{ID: owner}, Body: []byte("x"), Name: "x.txt",
+	})
+
+	require.ErrorIs(t, err, drive.ErrNoFreeSpace)
+}
+
 func TestUpload_RemoteUserBypassesCapacityGates(t *testing.T) {
 	svc, _, _ := newSvc(t)
 	svc.SetRoleChecker(&fakeMod{

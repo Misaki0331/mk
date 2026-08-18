@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/shiroha-a/mk/internal/api/apierr"
+	"github.com/shiroha-a/mk/internal/safemath"
 )
 
 // EndpointLimit defines rate limit parameters for an API endpoint.
@@ -297,7 +298,7 @@ func scaledMax(base int, factor float64) int {
 	if factor <= 0 || factor == 1.0 {
 		return base
 	}
-	scaled := int(float64(base) / factor)
+	scaled := safemath.Float64ToInt(float64(base) / factor)
 	if scaled < 1 {
 		return 1
 	}
@@ -312,7 +313,7 @@ func scaledMinInterval(base time.Duration, factor float64) time.Duration {
 	if factor <= 0 || factor == 1.0 {
 		return base
 	}
-	scaled := time.Duration(float64(base) * factor)
+	scaled := time.Duration(safemath.MulFloat64(factor, int64(base)))
 	if scaled < 0 {
 		return base
 	}

@@ -3,6 +3,7 @@ package drive_test
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -209,6 +210,17 @@ func TestStartChunkedUpload_RejectsTooManyParts(t *testing.T) {
 	assert.ErrorIs(t, err, drive.ErrInvalidUploadSize)
 }
 
+func TestStartChunkedUpload_MaxInt64SizeCannotOverflowPartCount(t *testing.T) {
+	f := newChunkedFixture(t)
+	f.roles.policies["u1"]["maxFileSizeMb"] = math.MaxInt
+
+	_, err := f.svc.StartChunkedUpload(context.Background(), drive.StartChunkedUploadInput{
+		User: f.user, Size: math.MaxInt64,
+	})
+
+	assert.ErrorIs(t, err, drive.ErrInvalidUploadSize)
+}
+
 // policy が引けない構成では fail-closed。gate が効かない状態で素通しにしない。
 func TestStartChunkedUpload_FailClosedWithoutPolicies(t *testing.T) {
 	f := newChunkedFixture(t)
@@ -240,6 +252,20 @@ func TestStartChunkedUpload_MaxFileSize(t *testing.T) {
 
 // 未完了セッションの申告分を容量計算に含めないと、残容量ぎりぎりのセッションを
 // 複数開くだけで driveCapacityMb を丸ごと迂回できる。
+func TestStartChunkedUpload_MaxIntegerPoliciesRemainPositive(t *testing.T) {
+	f := newChunkedFixture(t)
+	f.roles.policies["u1"]["maxFileSizeMb"] = math.MaxInt
+	f.roles.policies["u1"]["driveCapacityMb"] = math.MaxInt
+	f.roles.policies["u1"][role.PolicyChunkedUploadMaxPendingMb] = math.MaxInt
+	f.settings.MaxPendingBytesPerUser = 0
+
+	_, err := f.svc.StartChunkedUpload(context.Background(), drive.StartChunkedUploadInput{
+		User: f.user, Size: testChunkSize,
+	})
+
+	require.NoError(t, err)
+}
+
 func TestStartChunkedUpload_PendingCountsAgainstDriveCapacity(t *testing.T) {
 	f := newChunkedFixture(t)
 	f.roles.policies["u1"]["driveCapacityMb"] = 20

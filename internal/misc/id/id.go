@@ -16,6 +16,14 @@ import (
 // time2000 is the epoch used by AID/AIDX (2000-01-01T00:00:00Z in milliseconds).
 const time2000 int64 = 946684800000
 
+const (
+	aidMaxTimeMillis      = time2000 + 36*36*36*36*36*36*36*36 - 1
+	meidMinTimeMillis     = -(1 << 47)
+	meidMaxTimeMillis     = 1<<47 - 1
+	objectIDMaxTimeSecond = 1<<32 - 1
+	ulidMaxTimeMillis     = 1<<48 - 1
+)
+
 // AidxCutoffPrefix builds the smallest aidx-style ID at the given time
 // for use as a `WHERE id > ?` cutoff in note range scans (mk-go の note
 // は created_at 列を持たず aidx ID 先頭 8 文字に ms timestamp を埋め込
@@ -26,14 +34,9 @@ const time2000 int64 = 946684800000
 // 使い、aidx 規約と齟齬が出ないよう time2000 / base36 padding は本
 // パッケージの実装と必ず一致させる。
 func AidxCutoffPrefix(t time.Time) string {
+	t = clampUnixMillis(t, time2000, aidMaxTimeMillis)
 	ms := t.UnixMilli() - time2000
-	if ms < 0 {
-		ms = 0
-	}
 	timePart := fmt.Sprintf("%08s", strconv.FormatInt(ms, 36))
-	if len(timePart) > 8 {
-		timePart = timePart[len(timePart)-8:]
-	}
 	return timePart + "00000000"
 }
 
@@ -78,6 +81,7 @@ func newAID() *aidGen {
 }
 
 func (g *aidGen) Generate(t time.Time) string {
+	t = clampUnixMillis(t, time2000, aidMaxTimeMillis)
 	ms := t.UnixMilli() - time2000
 	timePart := padLeft(strconv.FormatInt(ms, 36), 8, '0')
 
@@ -118,6 +122,7 @@ func newAIDX() *aidxGen {
 }
 
 func (g *aidxGen) Generate(t time.Time) string {
+	t = clampUnixMillis(t, time2000, aidMaxTimeMillis)
 	ms := t.UnixMilli() - time2000
 	timePart := padLeft(strconv.FormatInt(ms, 36), 8, '0')
 	timePart = timePart[len(timePart)-8:]
@@ -153,6 +158,7 @@ func newMEID() *meidGen { return &meidGen{} }
 const meidOffset int64 = 0x800000000000
 
 func (g *meidGen) Generate(t time.Time) string {
+	t = clampUnixMillis(t, meidMinTimeMillis, meidMaxTimeMillis)
 	ms := t.UnixMilli()
 	timePart := padLeft(strconv.FormatInt(ms+meidOffset, 16), 12, '0')
 	return timePart + randomHex(12)
@@ -176,6 +182,7 @@ type objectIDGen struct{}
 func newObjectID() *objectIDGen { return &objectIDGen{} }
 
 func (g *objectIDGen) Generate(t time.Time) string {
+	t = clampUnixSeconds(t, 0, objectIDMaxTimeSecond)
 	sec := t.Unix()
 	timePart := padLeft(strconv.FormatInt(sec, 16), 8, '0')
 	return timePart + randomHex(16)
@@ -214,6 +221,7 @@ func newULID() *ulidGen {
 func (g *ulidGen) Generate(t time.Time) string {
 	// MustNewはentropyオーバーフロー時にpanicするが、80bit entropyが
 	// 同一ms内で使い切られるのは実用上起こらないので許容する。
+	t = clampUnixMillis(t, 0, ulidMaxTimeMillis)
 	return ulid.MustNew(ulid.Timestamp(t), g.entropy).String()
 }
 
@@ -229,6 +237,28 @@ func (g *ulidGen) ParseTime(id string) (time.Time, error) {
 }
 
 // --- Helpers ---
+
+func clampUnixMillis(t time.Time, min, max int64) time.Time {
+	ms := t.UnixMilli()
+	if ms < min {
+		return time.UnixMilli(min)
+	}
+	if ms > max {
+		return time.UnixMilli(max)
+	}
+	return t
+}
+
+func clampUnixSeconds(t time.Time, min, max int64) time.Time {
+	seconds := t.Unix()
+	if seconds < min {
+		return time.Unix(min, 0)
+	}
+	if seconds > max {
+		return time.Unix(max, 0)
+	}
+	return t
+}
 
 func padLeft(s string, length int, pad byte) string {
 	for len(s) < length {

@@ -2,6 +2,7 @@ package id
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -63,4 +64,11 @@ func TestNormalizeCursor_AidxPrefixSuffixIsZero(t *testing.T) {
 	dateMs := int64(1779744000000)
 	s, _ := NormalizeCursor("", "", &dateMs, nil)
 	assert.Equal(t, "00000000", s[8:], "aidx prefix 後半 8 文字は counter 最小値")
+}
+
+func TestAidxCutoffPrefix_ClampsUpperTimestamp(t *testing.T) {
+	max := time.UnixMilli(aidMaxTimeMillis)
+
+	assert.Equal(t, AidxCutoffPrefix(max), AidxCutoffPrefix(max.Add(time.Millisecond)))
+	assert.Equal(t, "zzzzzzzz00000000", AidxCutoffPrefix(max.Add(time.Millisecond)))
 }
